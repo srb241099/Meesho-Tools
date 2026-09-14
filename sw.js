@@ -1,4 +1,4 @@
-const CACHE="srb-meesho-tools-v5";
+const CACHE="srb-meesho-tools-v6";
 const CORE=["./","./index.html","./manifest.webmanifest","./icon-192.svg","./icon-512.svg"];
 self.addEventListener("install",e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)).then(()=>self.skipWaiting()));

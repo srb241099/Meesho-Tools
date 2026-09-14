@@ -658,19 +658,37 @@
     pcCalc();
 
 
-    // Unified desktop + mobile tab navigation
+
+    // Reliable tab navigation for both desktop and mobile
     function activateTool(tabId){
-      document.querySelectorAll(".tab-btn,.mobile-tab").forEach(b=>{
-        b.classList.toggle("active", b.dataset.tab===tabId);
+      const validTabs = ["calculator","cropper","pricecalc"];
+      if(!validTabs.includes(tabId)) tabId = "calculator";
+
+      document.querySelectorAll(".tool-panel").forEach(panel=>{
+        panel.classList.toggle("active", panel.id === tabId);
       });
-      document.querySelectorAll(".tool-panel").forEach(p=>{
-        p.classList.toggle("active", p.id===tabId);
+
+      document.querySelectorAll("[data-tab]").forEach(btn=>{
+        btn.classList.toggle("active", btn.dataset.tab === tabId);
       });
-      window.scrollTo({top:0,behavior:"smooth"});
+
+      try { localStorage.setItem("srbActiveTab", tabId); } catch(e) {}
     }
-    document.querySelectorAll(".mobile-tab").forEach(btn=>{
-      btn.addEventListener("click",()=>activateTool(btn.dataset.tab));
+
+    document.addEventListener("click", (e)=>{
+      const btn = e.target.closest("[data-tab]");
+      if(!btn) return;
+      e.preventDefault();
+      activateTool(btn.dataset.tab);
     });
+
+    // Restore the last-opened tool when the app launches
+    let initialTool = "calculator";
+    try {
+      const savedTool = localStorage.getItem("srbActiveTab");
+      if(["calculator","cropper","pricecalc"].includes(savedTool)) initialTool = savedTool;
+    } catch(e) {}
+    activateTool(initialTool);
 
     // PWA install prompt (supported Chromium browsers)
     let deferredPrompt=null;

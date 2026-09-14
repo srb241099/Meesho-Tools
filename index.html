@@ -230,6 +230,14 @@
       <div class="top-actions"><button id="installBtn" class="install-btn">Install App</button><div class="pill">PWA • Offline Ready</div></div>
     </header>
 
+    <div class="tabs scroll-tabs">
+      <button class="tab-btn active" data-tab="calculator">Profit Calculator</button>
+      <button class="tab-btn" data-tab="cropper">Label Cropper</button>
+      <button class="tab-btn" data-tab="pricecalc">Price Calculator</button>
+    </div>
+
+
+    <section id="calculator" class="tool-panel active">
     <div class="grid">
       <section class="card form-card">
         <h2 class="section-title">Enter your product numbers</h2>
@@ -341,6 +349,53 @@
       </aside>
     </div>
 
+    </section>
+
+
+    <section id="cropper" class="tool-panel">
+      <div class="card cropper-card">
+        <h2 class="section-title">Meesho Label Cropper</h2>
+
+        <div id="dropzone" class="dropzone">
+          <strong>Select Meesho Label PDF</strong>
+          <span>Tap here or drag & drop PDF • Multiple PDFs supported</span>
+          <input id="pdfFiles" type="file" accept="application/pdf,.pdf" multiple hidden>
+        </div>
+
+        <div id="fileList" class="file-list">No PDF selected.</div>
+
+        <div class="crop-settings">
+          <div class="field">
+            <label for="cropRatio">Label area from top of page</label>
+            <select id="cropRatio">
+              <option value="0.40">40%</option>
+              <option value="0.45">45%</option>
+              <option value="0.50" selected>50% — Recommended</option>
+              <option value="0.55">55%</option>
+              <option value="0.60">60%</option>
+              <option value="0.65">65%</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="printLayout">Output layout</label>
+            <select id="printLayout">
+              <option value="crop">Crop only — one label/page</option>
+              <option value="a4-2" selected>A4 — 2 labels/sheet</option>
+              <option value="a4-4">A4 — 4 labels/sheet</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="crop-actions">
+          <button id="makePdfBtn">Make my PDF</button>
+          <button id="clearPdfBtn" class="secondary">Start over</button>
+        </div>
+
+        <div id="cropStatus" class="crop-note">
+          PDF browser me process hoti hai. First use ke time internet chahiye ho sakta hai PDF engine load karne ke liye.
+        </div>
+      </div>
+    </section>
 
     <section id="pricecalc" class="tool-panel">
       <div class="price-grid">
@@ -448,6 +503,7 @@
     <footer>SRB Meesho Profit Calculator • Works as a single offline HTML file</footer>
   </main>
 
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script>
     const ids = ["selling","cost","gst","commission","shipping","packaging","returns","ads","gstRegistered","qty"];
     const $ = id => document.getElementById(id);
@@ -552,6 +608,128 @@
     $("saveBtn").addEventListener("click", save);
     $("resetBtn").addEventListener("click", reset);
     load();
+
+
+    // Label Cropper
+    let selectedPdfs = [];
+    const pdfInput = $("pdfFiles");
+    const dropzone = $("dropzone");
+    const fileList = $("fileList");
+    const cropStatus = $("cropStatus");
+
+    function setCropFiles(files){
+      selectedPdfs = Array.from(files || []).filter(f => /\.pdf$/i.test(f.name || ""));
+      fileList.textContent = selectedPdfs.length
+        ? selectedPdfs.map((f,i)=>`${i+1}. ${f.name}`).join(" • ")
+        : "No PDF selected.";
+      cropStatus.textContent = selectedPdfs.length
+        ? `${selectedPdfs.length} PDF selected. Ab “Make my PDF” dabao.`
+        : "PDF browser me process hoti hai.";
+    }
+
+    if(dropzone && pdfInput){
+      dropzone.addEventListener("click", ()=>pdfInput.click());
+      pdfInput.addEventListener("change", e=>setCropFiles(e.target.files));
+
+      ["dragenter","dragover"].forEach(ev=>dropzone.addEventListener(ev,e=>{
+        e.preventDefault();
+        dropzone.classList.add("drag");
+      }));
+      ["dragleave","drop"].forEach(ev=>dropzone.addEventListener(ev,e=>{
+        e.preventDefault();
+        dropzone.classList.remove("drag");
+      }));
+      dropzone.addEventListener("drop",e=>setCropFiles(e.dataTransfer.files));
+    }
+
+    $("clearPdfBtn")?.addEventListener("click",()=>{
+      selectedPdfs=[];
+      if(pdfInput) pdfInput.value="";
+      if(fileList) fileList.textContent="No PDF selected.";
+      if(cropStatus) cropStatus.textContent="PDF browser me process hoti hai.";
+    });
+
+    async function buildLabelsPdf(){
+      if(!selectedPdfs.length) throw new Error("Pehle Meesho label PDF select karo.");
+      if(!window.PDFLib) throw new Error("PDF engine load nahi hua. Internet ON karke app/site ek baar reload karo.");
+
+      const { PDFDocument } = window.PDFLib;
+      const ratio = parseFloat($("cropRatio").value) || .5;
+      const layout = $("printLayout").value;
+      const out = await PDFDocument.create();
+      const A4W=595.28, A4H=841.89;
+      let sheet=null, slot=0;
+
+      for(const file of selectedPdfs){
+        const src = await PDFDocument.load(await file.arrayBuffer(), {ignoreEncryption:true});
+
+        for(let i=0;i<src.getPageCount();i++){
+          const srcPage=src.getPage(i);
+          const {width,height}=srcPage.getSize();
+          const cropH=height*ratio;
+
+          if(layout==="crop"){
+            const [cp]=await out.copyPages(src,[i]);
+            cp.setCropBox(0,height-cropH,width,cropH);
+            cp.setMediaBox(0,height-cropH,width,cropH);
+            out.addPage(cp);
+            continue;
+          }
+
+          const per = layout==="a4-4" ? 4 : 2;
+          if(!sheet || slot>=per){
+            sheet=out.addPage([A4W,A4H]);
+            slot=0;
+          }
+
+          const embedded=await out.embedPage(srcPage);
+          const cols=per===4?2:1;
+          const rows=2;
+          const cellW=A4W/cols, cellH=A4H/rows;
+          const col=per===4?slot%2:0;
+          const row=per===4?Math.floor(slot/2):slot;
+          const cellX=col*cellW;
+          const cellY=A4H-(row+1)*cellH;
+
+          const scale=Math.min(cellW/width, cellH/cropH);
+          const drawW=width*scale;
+          const drawH=height*scale;
+          const visibleH=cropH*scale;
+          const x=cellX+(cellW-drawW)/2;
+          const y=cellY+(cellH-visibleH)/2-(height-cropH)*scale;
+
+          sheet.drawPage(embedded,{x,y,width:drawW,height:drawH});
+          slot++;
+        }
+      }
+      return await out.save();
+    }
+
+    $("makePdfBtn")?.addEventListener("click", async ()=>{
+      const btn=$("makePdfBtn");
+      btn.disabled=true;
+      btn.textContent="Processing...";
+      cropStatus.textContent="PDF process ho rahi hai…";
+      try{
+        const bytes=await buildLabelsPdf();
+        const blob=new Blob([bytes],{type:"application/pdf"});
+        const url=URL.createObjectURL(blob);
+        const a=document.createElement("a");
+        a.href=url;
+        a.download="SRB-Meesho-Cropped-Labels.pdf";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(()=>URL.revokeObjectURL(url),3000);
+        cropStatus.textContent="Done ✓ PDF create ho gayi.";
+      }catch(err){
+        console.error(err);
+        cropStatus.textContent=err?.message || "PDF process nahi ho payi.";
+      }finally{
+        btn.disabled=false;
+        btn.textContent="Make my PDF";
+      }
+    });
 
     // Backwards Meesho price calculator
     let pcMode="pct", pcGstRate=5;
